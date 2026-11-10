@@ -1,5 +1,286 @@
 # Mod Overlay
 
+**English** | [Русский](#russian)
+
+An OBS overlay controlled by moderators: drawing over the stream, images and GIFs, text,
+voice-over (TTS), sounds and effects. The overlay is added to OBS as a "Browser Source",
+while moderators work in a panel — in the Windows app or in a browser.
+
+## Features
+
+- Freehand drawing: pen, marker, eraser, undo, clear. Strokes are smoothed and synchronized
+  in real time.
+- Images, GIFs and video: file upload (up to 25 MB) or via URL, dragging, resizing,
+  opacity, fullscreen mode, auto-hide.
+- Text banners: size, color, background, outline, bold font, auto-hide.
+- Edge TTS voice-over: Russian and other voices, rate, pitch, volume. If the service is
+  unavailable, the browser's system voice is used.
+- Voice preview before going live, ready-made styles ("Narrator", "Radio", "Chipmunk", "Demon")
+  and a "Stop" button that instantly stops voice-over in the overlay.
+- Sounds: built-in presets (beep, buzzer, whoosh, drum roll, honk, pop) and your own audio files.
+- Effects: flash, shake, confetti.
+- Multiple moderators at the same time; changes are visible to all connected overlays.
+- The administrator adds moderators (login and password) right in the panel; each has their own
+  profile and password change.
+- The overlay is fully transparent and never shows errors on air.
+- The server can be kept on a host 24/7 — the streamer doesn't need to run any program.
+
+## Quick start (server)
+
+Node.js 20 or newer is required.
+
+```bat
+npm install
+npm run build
+npm start
+```
+
+Or just run `start.cmd` — it builds the project and starts the server.
+
+After the first run the console prints:
+
+- the panel address: `http://localhost:3000/panel/`
+- the link for OBS;
+- the `admin` login and a random administrator password.
+
+The password is also saved to `data/ADMIN_PASSWORD.txt`. Change it after the first login —
+the "Profile" button in the panel.
+
+## Source code on GitHub
+
+The repository is ready to upload: server, panel, overlay, Electron wrapper, tests, files for
+Docker/nginx/systemd and CI for GitHub Actions.
+
+> **Important:** GitHub Pages serves static files only. This site needs Node.js
+> (login, WebSocket, uploads, TTS), so GitHub hosts the code while the site itself runs
+> on a VPS or another hosting with Node.js and a persistent disk — see [`deploy/`](deploy/README.md).
+
+Uploading the sources:
+
+```bash
+git init
+git add .
+git commit -m "Mod Overlay"
+git branch -M main
+git remote add origin https://github.com/USER/mod-overlay.git
+git push -u origin main
+```
+
+`.gitignore` already excludes `node_modules/`, `dist/`, `release/`, `data/` and `.env`.
+The `data` folder and `.env` files must never be published: they contain passwords, the overlay key and secrets.
+
+After every push GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml))
+builds the project, checks types, runs all tests and verifies the Docker image build.
+
+Deploying the site from the repository onto a server:
+
+```bash
+git clone https://github.com/USER/mod-overlay.git /opt/mod-overlay-src
+cd /opt/mod-overlay-src/deploy
+cp .env.example .env
+nano .env                 # domain, PUBLIC_URL, ADMIN_LOGIN, ADMIN_PASSWORD
+docker compose up -d --build
+```
+
+If the repository is private, `git clone` and `git pull` will require an SSH key or a GitHub
+access token.
+
+## Hosted site (without the streamer running the program)
+
+The server can be deployed once on a VPS or a home server and left running.
+Moderators sign in to the site with their own logins, and the streamer doesn't need to run
+the Windows app: in OBS it is enough to paste the overlay link of that server.
+
+Ready-made hosting files are in the [`deploy/`](deploy/README.md) folder:
+
+- `deploy/Dockerfile`, `deploy/docker-compose.yml`, `deploy/Caddyfile` — site + HTTPS in one command;
+- `deploy/nginx.conf` — an nginx variant;
+- `deploy/mod-overlay.service` — running via systemd;
+- `deploy/.env.example` — domain, administrator password and token secret.
+
+In short (Docker + Caddy):
+
+```bash
+cd deploy
+cp .env.example .env      # DOMAIN, PUBLIC_URL, ADMIN_LOGIN, ADMIN_PASSWORD
+docker compose up -d --build
+```
+
+After startup: `https://your-domain/panel/`. The **Admin → Moderators** tab allows
+adding moderators (login + password), changing passwords and deleting accounts.
+
+### OBS
+
+1. Add a **Browser** source.
+2. Paste the link for OBS (the "OBS link" button in the panel, "Admin" tab).
+3. Width `1920`, height `1080`.
+4. Enable "Refresh browser when scene becomes active".
+5. Voice-over and sounds come from the source — enable it in the OBS mixer if needed.
+
+If OBS is on another computer, open the server port on the local network and use that computer's
+IP address instead of `localhost` (the server prints such addresses at startup).
+
+## Windows app
+
+The app combines a local server and the moderator panel in one window.
+
+- Running from sources: `npm install` (once) and `npm run desktop`.
+- Building the installer: `npm run dist` → the finished file is in the `release` folder.
+- Building without the installer: `npm run dist:dir` → `release\win-unpacked`.
+
+On first launch the app offers a mode choice:
+
+- **On this computer** — a local server on port `3111`, data in `%APPDATA%\Mod Overlay`.
+  The app must be running during the stream.
+- **On my own server** — the app opens the panel of an already deployed server at an address like
+  `https://overlay.example.com`.
+
+Settings are available in the "File → Settings…" menu; there you can also change the port, copy the link for
+OBS and open the data folder. If the port is busy, the app picks the next free one.
+
+Important: the Windows app's data folder and the server version's `data` folder are different. To transfer
+the database, copy the contents of the data folder.
+
+## Hosting the server on the internet
+
+The server is a regular Node.js application. It is enough to run it behind an HTTPS reverse proxy
+(nginx, Caddy, Traefik) with WebSocket support. Ready-made configurations and step-by-step instructions are in
+[`deploy/README.md`](deploy/README.md).
+
+Environment variables (can be placed in `.env`, example — `.env.example`):
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `PORT` | Server port | `3000` |
+| `HOST` | Listening interface | `0.0.0.0` |
+| `PUBLIC_URL` | External server address, used in the OBS link | address from the request |
+| `TRUST_PROXY` | How many proxies to trust (`loopback`, `1`) | `loopback` |
+| `DATA_DIR` | Folder with the database, uploads and voice-over | `./data` |
+| `PUBLIC_DIR` | Static files folder | `./public` |
+| `JWT_SECRET` | Token signing secret | generated in `data/secret.key` |
+| `ADMIN_LOGIN` | First administrator login | `admin` |
+| `ADMIN_PASSWORD` | First administrator password | generated |
+| `YANDEX_TTS_KEY` | Yandex SpeechKit API key for the Alena, Filipp, Zakhar… voices | disabled |
+| `YANDEX_TTS_FOLDER` | Yandex Cloud `folder_id` | — |
+| `STEOSVOICE_TOKEN` | SteosVoice token for character voices | disabled |
+| `STEOSVOICE_API_URL` | SteosVoice API base URL | `https://api.voice.steos.io/v1` |
+
+### DonationAlerts voices
+
+Besides Edge TTS, the panel can enable the voices used by DonationAlerts:
+
+- **Yandex SpeechKit** — Alena, Filipp, Ermil, Jane, Omazh, Zakhar, Madirus, Marina.
+  Requires `YANDEX_TTS_KEY` and `YANDEX_TTS_FOLDER` from the Yandex Cloud console.
+- **SteosVoice** — character and streamer voices. Requires `STEOSVOICE_TOKEN` from
+  the [dashboard](https://console.cybervoice.io/user).
+
+Without the keys these voices are not shown, and voice-over keeps working via Edge TTS.
+The keys are stored only in `.env` on the server and are never sent to the browser.
+
+nginx example:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name overlay.example.com;
+    client_max_body_size 30m;          # file uploads up to 25 MB
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+Be sure to set `PUBLIC_URL=https://overlay.example.com` so the OBS link is correct.
+WebSocket connections go through the same domain automatically (`wss://`).
+
+What is stored in `data`:
+
+- `db.json` — users, the room and the overlay key;
+- `rooms.json` — current scene state;
+- `uploads/` — uploaded images, videos and sounds;
+- `tts/` — generated voice-over (cleaned up automatically);
+- `secret.key` — the JWT secret;
+- `ADMIN_PASSWORD.txt` — the first-login password.
+
+## Panel hotkeys
+
+| Keys | Action |
+| --- | --- |
+| `V` / `P` / `M` / `E` | select, pen, marker, eraser |
+| `Ctrl+Z` | undo the last stroke |
+| `Delete` / `Backspace` | delete the selected object |
+| `Esc` | deselect |
+| `Ctrl+Enter` | send text or voice-over |
+
+## Security
+
+- The overlay key is contained in the link and is checked on connection. The key can be changed in the panel —
+  the old link stops working.
+- Login by username and password, the token is valid for 24 hours.
+- No more than 15 login attempts per 10 minutes from a single IP.
+- Uploads: images, video and audio only, no SVG, up to 25 MB.
+- WebSocket message rate and room state size are limited.
+- Host the server over HTTPS only: passwords and tokens are transmitted through it.
+
+## Project structure
+
+```
+src/            TypeScript server (Express, ws, JWT, Edge TTS)
+public/panel/   moderator panel site (separate HTML/CSS/JS)
+public/overlay/ the OBS overlay
+public/shared/  shared scene renderer
+desktop/        Electron app (main, preload, settings, icons)
+deploy/         Docker, Caddy, nginx, systemd and hosting guide
+.github/        GitHub Actions CI (types, tests, Docker image)
+test/           automated tests for the server, WebSocket, state and panel
+data/           database, uploads, voice-over (created at startup, not committed)
+```
+
+## Tests
+
+```bat
+npm test
+```
+
+The tests run on the built-in `node:test` and require no internet: TTS is checked via
+a stubbed engine, the server starts on a free port with a temporary data folder.
+On GitHub the same checks are performed by the [`.github/workflows/ci.yml`](.github/workflows/ci.yml) workflow.
+Covered:
+
+- login, roles, attempt limiting, password change and revocation;
+- moderator creation/deletion, the overlay key, file uploads;
+- WebSocket: authorization, scene synchronization, drawing, media and text events,
+  session closure after password changes and key rotation;
+- room state validation and limits, auto-hide;
+- frontend module syntax and panel tab/ID consistency.
+
+## Troubleshooting
+
+- **Blank in OBS.** Check that the server is running, the link was copied in full and the key is still valid.
+  The browser source in OBS must have sound enabled.
+- **"No connection" in the panel.** The server is stopped, the port is busy, or the address in the app settings
+  does not match the server address.
+- **Voice-over doesn't work.** Edge TTS is sometimes unavailable — the panel automatically switches to
+  the system voice. Check the internet connection on the server computer.
+- **Moderators on the local network can't log in.** Allow inbound connections to the port in
+  Windows Firewall and use the IP address of the computer running the server.
+- **Forgot the administrator password.** If there are no other administrators, stop the server, delete
+  `data/db.json` and start it again — a new administrator will be created. Note that the overlay key
+  will change as well: the link in OBS must be replaced. Upload and voice-over files stay in place.
+
+---
+
+<a id="russian"></a>
+
+[English](#mod-overlay) | **Русский**
+
 Оверлей для OBS, которым управляют модераторы: рисунок поверх стрима, картинки и GIF, текст,
 озвучка (TTS), звуки и эффекты. Оверлей подключается в OBS как «Браузерный источник», а модераторы
 работают в панели — в Windows-приложении или в браузере.
