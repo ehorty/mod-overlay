@@ -1,0 +1,28 @@
+# /etc/systemd/system/mod-overlay.service
+# Пользователь modoverlay, приложение в /opt/mod-overlay, данные в /opt/mod-overlay/data.
+# Перед запуском: npm ci && npm run build, затем systemctl daemon-reload.
+
+[Unit]
+Description=Mod Overlay — сайт и оверлей для OBS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=modoverlay
+Group=modoverlay
+WorkingDirectory=/opt/mod-overlay
+EnvironmentFile=/opt/mod-overlay/.env
+ExecStart=/usr/bin/node /opt/mod-overlay/dist/index.js
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/mod-overlay/data
+
+[Install]
+WantedBy=multi-user.target

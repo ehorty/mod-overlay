@@ -1,0 +1,84 @@
+{
+  "name": "mod-overlay",
+  "productName": "Mod Overlay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OBS overlay controlled by moderators (drawing, images, TTS, sounds)",
+  "author": "Mod Overlay",
+  "license": "MIT",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "npm run build && node --test \"test/**/*.test.mjs\"",
+    "test:only": "node --test \"test/**/*.test.mjs\"",
+    "desktop": "npm run build && electron .",
+    "desktop:dev": "npm run build && electron . --dev",
+    "dist": "npm run build && electron-builder --win nsis",
+    "dist:dir": "npm run build && electron-builder --win dir"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@andresaya/edge-tts": "^1.9.1",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^18.0.9",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.5.0",
+    "ws": "^8.22.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.3.0",
+    "@types/node": "^26.6.6",
+    "@types/ws": "^8.18.2",
+    "electron": "^40.10.6",
+    "electron-builder": "^26.18.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "build": {
+    "appId": "ru.modoverlay.desktop",
+    "productName": "Mod Overlay",
+    "asar": false,
+    "directories": {
+      "output": "release",
+      "buildResources": "desktop"
+    },
+    "files": [
+      "dist/**/*",
+      "public/**/*",
+      "desktop/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "desktop/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "ModOverlay-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Mod Overlay",
+      "deleteAppDataOnUninstall": false
+    }
+  },
+  "allowScripts": {
+    "electron@40.10.6": true
+  }
+}

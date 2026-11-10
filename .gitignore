@@ -1,0 +1,31 @@
+# Зависимости
+node_modules/
+
+# Сборка
+dist/
+release/
+*.tsbuildinfo
+
+# Данные и секреты (никогда не коммитить)
+data/
+deploy/data/
+.env
+.env.*
+!.env.example
+!deploy/.env.example
+*.key
+ADMIN_PASSWORD.txt
+
+# Логи и временные файлы
+*.log
+server.log
+.tmp/
+.tmp-*/
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+
+# Тестовые артефакты
+test-media.png
+public/test-media.png

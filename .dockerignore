@@ -1,0 +1,16 @@
+node_modules
+dist
+release
+data
+deploy/data
+test
+.git
+.github
+.gitignore
+.gitattributes
+*.log
+*.rar
+.env
+.env.*
+!deploy/.env.example
+README.md

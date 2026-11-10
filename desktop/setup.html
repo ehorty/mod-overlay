@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mod Overlay — настройка</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0d12;
+        --card: #131722;
+        --card-2: #0f131c;
+        --line: #232a3a;
+        --text: #e8ecf6;
+        --muted: #8b95ab;
+        --accent: #8b5cf6;
+        --accent-2: #6d4df0;
+        --ok: #34d399;
+        --danger: #f87171;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+
+      body {
+        background:
+          radial-gradient(1200px 600px at 100% -10%, rgba(139, 92, 246, 0.16), transparent 60%),
+          radial-gradient(900px 500px at -10% 110%, rgba(56, 189, 248, 0.1), transparent 55%), var(--bg);
+        color: var(--text);
+        font: 14px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif;
+        padding: 28px 24px 24px;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .shell {
+        max-width: 680px;
+        margin: 0 auto;
+        display: grid;
+        gap: 16px;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 2px;
+      }
+
+      .logo {
+        width: 46px;
+        height: 46px;
+        border-radius: 13px;
+        display: grid;
+        place-items: center;
+        font-weight: 800;
+        letter-spacing: -0.5px;
+        color: #fff;
+        background: linear-gradient(140deg, var(--accent), #4f46e5 70%);
+        box-shadow: 0 8px 24px rgba(109, 77, 240, 0.35);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 20px;
+        letter-spacing: -0.2px;
+      }
+
+      h2 {
+        margin: 0 0 10px;
+        font-size: 14px;
+        font-weight: 650;
+        letter-spacing: 0.2px;
+      }
+
+      .ver {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .card {
+        background: linear-gradient(180deg, var(--card), var(--card-2));
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 16px 18px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+      }
+
+      .status {
+        border-color: rgba(52, 211, 153, 0.25);
+        background: linear-gradient(180deg, rgba(52, 211, 153, 0.08), rgba(19, 23, 34, 0.9));
+      }
+
+      .status-line {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        margin-bottom: 12px;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--ok);
+        box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.15);
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      input[type="text"],
+      input[type="url"],
+      input[type="number"] {
+        width: 100%;
+        background: #0a0d14;
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 9px 11px;
+        font: inherit;
+        outline: none;
+      }
+
+      input:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18);
+      }
+
+      .copy-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 6px;
+      }
+
+      .copy-row input {
+        font-family: ui-monospace, Consolas, monospace;
+        font-size: 12px;
+      }
+
+      button {
+        font: inherit;
+        cursor: pointer;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: #1a2030;
+        color: var(--text);
+        padding: 9px 13px;
+        font-weight: 600;
+        white-space: nowrap;
+        transition:
+          background 0.15s,
+          border-color 0.15s,
+          transform 0.05s;
+      }
+
+      button:hover {
+        background: #212a3d;
+        border-color: #2f3a52;
+      }
+
+      button:active {
+        transform: translateY(1px);
+      }
+
+      button:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+
+      .primary {
+        background: linear-gradient(140deg, var(--accent), var(--accent-2));
+        border-color: transparent;
+        color: #fff;
+        box-shadow: 0 6px 18px rgba(109, 77, 240, 0.28);
+      }
+
+      .primary:hover {
+        background: linear-gradient(140deg, #9569ff, #7455f5);
+        border-color: transparent;
+      }
+
+      .modes {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .mode {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px;
+        cursor: pointer;
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 500;
+        background: #10141d;
+        transition:
+          border-color 0.15s,
+          background 0.15s;
+      }
+
+      .mode:hover {
+        border-color: #33405a;
+      }
+
+      .mode:has(input:checked) {
+        border-color: var(--accent);
+        background: rgba(139, 92, 246, 0.1);
+      }
+
+      .mode input {
+        margin: 3px 0 0;
+        accent-color: var(--accent);
+      }
+
+      .mode b {
+        display: block;
+        font-size: 13px;
+        margin-bottom: 2px;
+      }
+
+      .mode small {
+        display: block;
+        color: var(--muted);
+        font-size: 11.5px;
+        line-height: 1.45;
+        font-weight: 400;
+      }
+
+      .opts {
+        margin-top: 14px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .hint {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .error {
+        margin: 12px 0 0;
+        color: var(--danger);
+        font-size: 13px;
+        font-weight: 600;
+        background: rgba(248, 113, 113, 0.08);
+        border: 1px solid rgba(248, 113, 113, 0.25);
+        border-radius: 10px;
+        padding: 9px 11px;
+      }
+
+      .actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 16px;
+        flex-wrap: wrap;
+      }
+
+      .actions .primary {
+        flex: 1;
+        min-width: 220px;
+      }
+
+      .first-run {
+        border-color: rgba(139, 92, 246, 0.4);
+      }
+
+      .first-run p {
+        margin: 6px 0;
+      }
+
+      .first-run code {
+        background: #0a0d14;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 4px 8px;
+        font: 600 14px ui-monospace, Consolas, monospace;
+        letter-spacing: 0.5px;
+      }
+
+      footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        color: var(--muted);
+        font-size: 12px;
+        padding: 0 4px;
+      }
+
+      .link {
+        background: none;
+        border: none;
+        padding: 0;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 500;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
+
+      .link:hover {
+        color: var(--text);
+        background: none;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      @media (max-width: 560px) {
+        body {
+          padding: 18px 14px;
+        }
+
+        .modes {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header>
+        <div class="logo">MO</div>
+        <div>
+          <h1>Mod Overlay</h1>
+          <p class="ver">Оверлей для OBS и панель модератора</p>
+        </div>
+      </header>
+
+      <section class="card status" id="status-card" hidden>
+        <div class="status-line"><span class="dot"></span><span id="status-text"></span></div>
+        <div id="overlay-block">
+          <label for="overlay-url">Ссылка для OBS</label>
+          <div class="copy-row">
+            <input id="overlay-url" type="text" readonly />
+            <button id="copy-overlay" type="button">Копировать</button>
+          </div>
+        </div>
+        <p class="hint" id="overlay-note" hidden>
+          Ссылка для OBS находится в панели: вкладка «Админ» → «Ссылка для OBS».
+        </p>
+        <p class="hint">
+          OBS → Источники → «Браузер» → вставьте ссылку. Ширина 1920, высота 1080. Включите «Обновлять браузер,
+          когда сцена становится активной».
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Где работает сервер</h2>
+        <div class="modes">
+          <label class="mode">
+            <input type="radio" name="mode" value="local" checked />
+            <span>
+              <b>На этом компьютере</b>
+              <small>Простой вариант. Сервер и OBS на одном ПК. Приложение должно быть запущено во время стрима.</small>
+            </span>
+          </label>
+          <label class="mode">
+            <input type="radio" name="mode" value="remote" />
+            <span>
+              <b>На своём сервере</b>
+              <small>Если сервер уже размещён в интернете. Панель и OBS подключаются по ссылке.</small>
+            </span>
+          </label>
+        </div>
+
+        <div class="opts" id="local-opts">
+          <label for="local-port">Порт локального сервера</label>
+          <input id="local-port" type="number" min="1024" max="65535" step="1" value="3111" />
+          <p class="hint">Если порт занят, приложение подберёт следующий свободный и обновит ссылку для OBS.</p>
+        </div>
+
+        <div class="opts" id="remote-opts" hidden>
+          <label for="server-url">Адрес сервера</label>
+          <input id="server-url" type="url" placeholder="https://overlay.example.com" spellcheck="false" />
+          <p class="hint">
+            Панель откроется по адресу <code>/panel/</code>. Ссылку для OBS возьмите во вкладке «Админ» в панели.
+          </p>
+        </div>
+
+        <p class="error" id="error" hidden></p>
+
+        <div class="actions">
+          <button class="primary" id="save" type="button">Сохранить и открыть панель</button>
+          <button class="secondary" id="open" type="button" hidden>Открыть панель</button>
+        </div>
+      </section>
+
+      <section class="card first-run" id="first-run" hidden>
+        <h2>Первый вход в панель</h2>
+        <p>Логин: <b>admin</b></p>
+        <p>
+          Пароль: <code id="admin-pass"></code>
+          <button class="link" id="copy-pass" type="button">Копировать</button>
+        </p>
+        <p class="hint">
+          Пароль также сохранён в файле <code>ADMIN_PASSWORD.txt</code> в папке с данными. Смените его после первого
+          входа — вкладка «Админ» в панели.
+        </p>
+      </section>
+
+      <footer>
+        <button class="link" id="data-folder" type="button">Папка с данными</button>
+        <span id="version">Mod Overlay</span>
+      </footer>
+    </div>
+
+    <script>
+      const api = window.modOverlay;
+      const $ = (id) => document.getElementById(id);
+      const els = {
+        statusCard: $('status-card'),
+        statusText: $('status-text'),
+        overlayBlock: $('overlay-block'),
+        overlayNote: $('overlay-note'),
+        overlayUrl: $('overlay-url'),
+        copyOverlay: $('copy-overlay'),
+        localOpts: $('local-opts'),
+        remoteOpts: $('remote-opts'),
+        localPort: $('local-port'),
+        serverUrl: $('server-url'),
+        error: $('error'),
+        save: $('save'),
+        open: $('open'),
+        firstRun: $('first-run'),
+        adminPass: $('admin-pass'),
+        copyPass: $('copy-pass'),
+        dataFolder: $('data-folder'),
+        version: $('version'),
+      };
+
+      let state = null;
+      let busy = false;
+
+      function mode() {
+        return document.querySelector('input[name="mode"]:checked')?.value === 'remote' ? 'remote' : 'local';
+      }
+
+      function setMode(value) {
+        const radio = document.querySelector(`input[name="mode"][value="${value}"]`);
+        if (radio) radio.checked = true;
+        syncMode();
+      }
+
+      function syncMode() {
+        const remote = mode() === 'remote';
+        els.localOpts.hidden = remote;
+        els.remoteOpts.hidden = !remote;
+      }
+
+      function showError(text) {
+        els.error.hidden = !text;
+        els.error.textContent = text || '';
+      }
+
+      function flash(button, text) {
+        if (!button) return;
+        const original = button.textContent;
+        button.textContent = text;
+        button.disabled = true;
+        setTimeout(() => {
+          button.textContent = original;
+          button.disabled = false;
+        }, 1200);
+      }
+
+      function render() {
+        if (!state) return;
+        els.version.textContent = `Версия ${state.appVersion}`;
+        setMode(state.config.mode);
+
+        els.localPort.value = String(state.config.localPort || 3111);
+        els.serverUrl.value = state.config.serverUrl || '';
+
+        const running = state.running;
+        const remoteReady = state.config.mode === 'remote' && state.config.serverUrl;
+        const showStatus = Boolean(running || remoteReady);
+
+        els.statusCard.hidden = !showStatus;
+        if (running) {
+          els.statusText.textContent = `Локальный сервер запущен · порт ${running.port}`;
+          els.overlayUrl.value = running.overlayUrl;
+        } else if (remoteReady) {
+          els.statusText.textContent = `Сервер: ${state.config.serverUrl}`;
+          els.overlayUrl.value = '';
+        }
+        els.copyOverlay.hidden = !running;
+        els.overlayBlock.hidden = !running;
+        els.overlayNote.hidden = Boolean(running);
+
+        els.open.hidden = !showStatus;
+
+        const pass = state.adminPassword || '';
+        els.firstRun.hidden = !pass;
+        if (pass) els.adminPass.textContent = pass;
+
+        showError(state.error || '');
+      }
+
+      async function refresh() {
+        try {
+          state = await api.getState();
+          render();
+        } catch (err) {
+          showError('Не удалось получить настройки приложения.');
+          console.error(err);
+        }
+      }
+
+      async function save() {
+        if (busy) return;
+        busy = true;
+        els.save.disabled = true;
+        els.save.textContent = 'Запускаю…';
+        showError('');
+        const payload = {
+          mode: mode(),
+          serverUrl: els.serverUrl.value.trim(),
+          localPort: Number(els.localPort.value),
+        };
+        try {
+          const result = await api.apply(payload);
+          if (!result.ok) {
+            showError(result.error || 'Не удалось сохранить настройки.');
+            if (result.state) {
+              state = result.state;
+              render();
+            }
+            return;
+          }
+          if (result.state) {
+            state = result.state;
+            render();
+          }
+        } catch (err) {
+          showError(String(err?.message || err));
+        } finally {
+          busy = false;
+          els.save.disabled = false;
+          els.save.textContent = 'Сохранить и открыть панель';
+        }
+      }
+
+      document.querySelectorAll('input[name="mode"]').forEach((radio) => {
+        radio.addEventListener('change', syncMode);
+      });
+
+      els.save.addEventListener('click', save);
+      els.open.addEventListener('click', async () => {
+        const result = await api.openPanel();
+        if (!result.ok) showError(result.error || 'Не удалось открыть панель.');
+      });
+
+      els.copyOverlay.addEventListener('click', async () => {
+        await api.copy(els.overlayUrl.value);
+        flash(els.copyOverlay, 'Скопировано');
+      });
+
+      els.copyPass.addEventListener('click', async () => {
+        await api.copy(els.adminPass.textContent);
+        flash(els.copyPass, 'Скопировано');
+      });
+
+      els.dataFolder.addEventListener('click', () => api.openDataFolder());
+
+      els.serverUrl.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') save();
+      });
+
+      if (!api) {
+        showError('Мост с приложением недоступен. Запустите настройку через Mod Overlay.');
+      } else {
+        api.onRefresh(refresh);
+        refresh();
+      }
+    </script>
+  </body>
+</html>

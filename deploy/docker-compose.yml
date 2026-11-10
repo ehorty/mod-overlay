@@ -1,0 +1,57 @@
+# Запуск сайта и оверлея на сервере (VPS) одной командой:
+#   cd deploy
+#   cp .env.example .env
+#   nano .env                       # домен, пароль администратора, JWT_SECRET
+#   docker compose up -d --build
+#
+# Наружу открываются только 80/443 (Caddy). Сам Node.js-сервер доступен
+# контейнеру Caddy по внутренней сети и не публикуется в интернет.
+
+name: mod-overlay
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATA_DIR: /app/data
+      TRUST_PROXY: 1
+    volumes:
+      - app-data:/app/data
+    expose:
+      - "3000"
+    networks:
+      - overlay
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      DOMAIN: ${DOMAIN:?Укажите DOMAIN в deploy/.env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - overlay
+
+networks:
+  overlay:
+
+volumes:
+  app-data:
+  caddy-data:
+  caddy-config:

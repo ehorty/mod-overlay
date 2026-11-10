@@ -1,0 +1,18 @@
+# Caddy сам получает и продлевает HTTPS-сертификат для домена из deploy/.env.
+# WebSocket (/ws) проксируется автоматически.
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	request_body {
+		max_size 30MB
+	}
+
+	reverse_proxy app:3000 {
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	header {
+		-Server
+	}
+}
