@@ -17,7 +17,17 @@ while moderators work in a panel — in the Windows app or in a browser.
   unavailable, the browser's system voice is used.
 - Voice preview before going live, ready-made styles ("Narrator", "Radio", "Chipmunk", "Demon")
   and a "Stop" button that instantly stops voice-over in the overlay.
-- Sounds: built-in presets (beep, buzzer, whoosh, drum roll, honk, pop) and your own audio files.
+- Soundboard: your own sound library with categories, favorites, per-sound hotkeys and a playback
+  queue, plus built-in presets (beep, buzzer, whoosh, drum roll, honk, pop). Upload audio files or
+  add them by URL; drag pads to reorder.
+- Widgets on the overlay: clock, timer/stopwatch, event counter, progress bar, fundraising goal,
+  random picker and leaderboard — each with a live editor in the panel.
+- Animated notifications: ready-made templates (donation, follower, subscription, success, warning,
+  error, info), six screen positions, four entrance animations, custom accent/icon and a live preview.
+- Live event feed: every moderator action (text, sound, drawing, effects, widgets, notifications)
+  in real time, with per-action filters and search.
+- Flexible permissions: grant each moderator only the rights they need — drawing, media, text, TTS,
+  sounds, effects, widgets, notifications and screen clearing. Tabs and tools hide automatically.
 - Effects: flash, shake, confetti.
 - Multiple moderators at the same time; changes are visible to all connected overlays.
 - The administrator adds moderators (login and password) right in the panel; each has their own
@@ -216,8 +226,9 @@ What is stored in `data`:
 | `V` / `P` / `M` / `E` | select, pen, marker, eraser |
 | `Ctrl+Z` | undo the last stroke |
 | `Delete` / `Backspace` | delete the selected object |
-| `Esc` | deselect |
+| `Esc` | deselect / close a dialog |
 | `Ctrl+Enter` | send text or voice-over |
+| `A`–`Z`, `0`–`9`, `F1`–`F12` | play the sound assigned to that key (soundboard) |
 
 ## Security
 
@@ -256,6 +267,12 @@ Covered:
 
 - login, roles, attempt limiting, password change and revocation;
 - moderator creation/deletion, the overlay key, file uploads;
+- flexible permissions: normalization, per-event enforcement over WebSocket and HTTP;
+- widgets: normalization and live control of every type (counter, timer, progress, goal, random,
+  leaderboard), persistence and limits;
+- soundboard: idempotent import, hotkey conflicts, favorites, reordering and persistence;
+- animated notifications: validation, templates, positions and clamping;
+- live event feed: recording, ordering, the ring buffer and admin-only clearing;
 - WebSocket: authorization, scene synchronization, drawing, media and text events,
   session closure after password changes and key rotation;
 - room state validation and limits, auto-hide;
@@ -296,7 +313,17 @@ Covered:
   используется системный голос браузера.
 - Прослушивание голоса до эфира, готовые стили («Диктор», «Радио», «Бурундук», «Демон»)
   и кнопка «Стоп», мгновенно останавливающая озвучку в оверлее.
-- Звуки: готовые пресеты (бип, баззер, вжух, дробь, гудок, поп) и свои аудиофайлы.
+- Soundboard: собственная библиотека звуков с категориями, избранным, горячими клавишами для каждого
+  звука и очередью воспроизведения, плюс готовые пресеты (бип, баззер, вжух, дробь, гудок, поп).
+  Загружайте аудиофайлы или добавляйте по ссылке; перетаскивайте плашки для порядка.
+- Виджеты на оверлее: часы, таймер/секундомер, счётчик событий, полоса прогресса, цель сбора средств,
+  случайный выбор и таблица лидеров — у каждого живой редактор в панели.
+- Анимированные уведомления: готовые шаблоны (донат, подписчик, подписка, успех, предупреждение,
+  ошибка, информация), шесть позиций на экране, четыре анимации появления, свой цвет/иконка и предпросмотр.
+- Живая лента событий: каждое действие модераторов (текст, звук, рисунок, эффекты, виджеты, уведомления)
+  в реальном времени, с фильтрами по типу действия и поиском.
+- Гибкая система прав: выдавайте каждому модератору только нужные права — рисование, медиа, текст, TTS,
+  звуки, эффекты, виджеты, уведомления и очистка экрана. Вкладки и инструменты скрываются автоматически.
 - Эффекты: вспышка, тряска, конфетти.
 - Несколько модераторов одновременно; изменения видят все подключённые оверлеи.
 - Администратор добавляет модераторов (логин и пароль) прямо в панели; у каждого свой профиль
@@ -495,8 +522,9 @@ WebSocket-соединения пойдут через тот же домен а
 | `V` / `P` / `M` / `E` | выбор, ручка, маркер, ластик |
 | `Ctrl+Z` | отменить последний штрих |
 | `Delete` / `Backspace` | удалить выбранный объект |
-| `Esc` | снять выделение |
+| `Esc` | снять выделение / закрыть окно |
 | `Ctrl+Enter` | отправить текст или озвучку |
+| `A`–`Z`, `0`–`9`, `F1`–`F12` | звук, назначенный на эту клавишу (soundboard) |
 
 ## Безопасность
 
@@ -535,6 +563,12 @@ npm test
 
 - вход, роли, ограничение попыток, смена и отзыв паролей;
 - создание/удаление модераторов, ключ оверлея, загрузки файлов;
+- гибкие права: нормализация и проверка прав для каждого события по WebSocket и HTTP;
+- виджеты: нормализация и живое управление всеми типами (счётчик, таймер, прогресс, цель, случайный
+  выбор, лидеры), сохранение и лимиты;
+- soundboard: идемпотентный импорт, конфликты горячих клавиш, избранное, порядок и сохранение;
+- анимированные уведомления: валидация, шаблоны, позиции и ограничения;
+- живая лента событий: запись, порядок, кольцевой буфер и очистка только админом;
 - WebSocket: авторизация, синхронизация сцены, события рисования, медиа и текста,
   закрытие сессий после смены пароля и перевыпуска ключа;
 - валидация и лимиты состояния комнаты, автоскрытие;

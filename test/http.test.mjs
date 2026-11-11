@@ -8,6 +8,8 @@ import { AuthService } from '../dist/auth.js';
 import { RoomStore } from '../dist/state.js';
 import { createApp } from '../dist/http.js';
 import { Hub } from '../dist/hub.js';
+import { EventLog } from '../dist/events.js';
+import { SoundStore } from '../dist/sounds.js';
 import {
   ADMIN_LOGIN,
   ADMIN_PASSWORD,
@@ -427,8 +429,10 @@ test('TTS-маршрут рассылает озвучку оверлею', asyn
   };
 
   const server = http.createServer();
-  const hub = new Hub({ server, config, db, auth, rooms });
-  server.on('request', createApp({ config, db, auth, rooms, tts, hub }));
+  const events = new EventLog();
+  const sounds = new SoundStore(dir);
+  const hub = new Hub({ server, config, db, auth, rooms, events, sounds });
+  server.on('request', createApp({ config, db, auth, rooms, tts, hub, events, sounds }));
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
   const base = `http://127.0.0.1:${port}`;

@@ -5,6 +5,8 @@ import { Db } from './db';
 import { AuthService } from './auth';
 import { RoomStore } from './state';
 import { TtsService } from './tts';
+import { EventLog } from './events';
+import { SoundStore } from './sounds';
 import { Hub } from './hub';
 import { createApp } from './http';
 import { log } from './log';
@@ -31,6 +33,8 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
     adminPassword: config.adminPassword,
   });
   const rooms = new RoomStore(config.dataDir);
+  const events = new EventLog();
+  const sounds = new SoundStore(config.dataDir);
   const tts = new TtsService(path.join(config.dataDir, 'tts'), undefined, {
     yandexKey: config.yandexTtsKey,
     yandexFolder: config.yandexTtsFolder,
@@ -39,8 +43,8 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   });
 
   const server = http.createServer();
-  const hub = new Hub({ server, config, db, auth, rooms });
-  server.on('request', createApp({ config, db, auth, rooms, tts, hub }));
+  const hub = new Hub({ server, config, db, auth, rooms, events, sounds });
+  server.on('request', createApp({ config, db, auth, rooms, tts, hub, events, sounds }));
 
   const cleanup = setInterval(() => tts.cleanup(), 30 * 60 * 1000);
   cleanup.unref?.();
@@ -88,6 +92,7 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
       server.closeAllConnections?.();
     });
     rooms.flush();
+    sounds.flush();
     db.saveNow();
   };
 

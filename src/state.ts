@@ -51,11 +51,76 @@ export interface TextItem {
   expiresAt?: number;
 }
 
+export type WidgetType =
+  | 'clock'
+  | 'timer'
+  | 'counter'
+  | 'progress'
+  | 'goal'
+  | 'random'
+  | 'leaderboard';
+
+export const WIDGET_TYPES: WidgetType[] = [
+  'clock',
+  'timer',
+  'counter',
+  'progress',
+  'goal',
+  'random',
+  'leaderboard',
+];
+
+export interface LeaderEntry {
+  name: string;
+  score: number;
+}
+
+export interface Widget {
+  id: string;
+  type: WidgetType;
+  /** Левый верхний угол и размер, доля ширины/высоты сцены. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  opacity: number;
+  hidden: boolean;
+  /** Акцентный цвет и фон карточки. */
+  color: string;
+  bg: string;
+  /** Данные конкретного типа виджета. */
+  data: Record<string, unknown>;
+  expiresAt?: number;
+}
+
+export type NotifyPosition =
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right';
+
+export type NotifyAnimation = 'slide' | 'fade' | 'pop' | 'bounce';
+
+export interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  template: string;
+  position: NotifyPosition;
+  animation: NotifyAnimation;
+  duration: number;
+  accent: string;
+  icon: string;
+}
+
 export interface RoomState {
   revision: number;
   strokes: Stroke[];
   media: MediaItem[];
   texts: TextItem[];
+  widgets: Widget[];
   updatedAt: number;
 }
 
@@ -75,6 +140,9 @@ export type RoomEvent =
   | { t: 'text.add'; item: TextItem }
   | { t: 'text.update'; item: TextItem }
   | { t: 'text.remove'; id: string }
+  | { t: 'widget.add'; item: Widget }
+  | { t: 'widget.update'; item: Widget }
+  | { t: 'widget.remove'; id: string }
   | { t: 'scene.clear' }
   | { t: 'state'; state: RoomState };
 
@@ -94,6 +162,9 @@ const MAX_TOTAL_POINTS = 400_000;
 const MAX_MEDIA = 30;
 const MAX_TEXTS = 20;
 const MAX_TEXT_LEN = 300;
+const MAX_WIDGETS = 20;
+const MAX_RANDOM_ITEMS = 60;
+const MAX_LEADERS = 30;
 
 /* ------------------------------------------------------------------ */
 /* Валидация                                                           */
@@ -205,12 +276,258 @@ function normText(input: unknown, base?: TextItem): TextItem | null {
   };
 }
 
+function safeStr(v: unknown, max: number, def = ''): string {
+  return typeof v === 'string' ? v.slice(0, max) : def;
+}
+
+function widgetType(v: unknown): WidgetType {
+  return WIDGET_TYPES.includes(v as WidgetType) ? (v as WidgetType) : 'clock';
+}
+
+function defaultData(type: WidgetType): Record<string, unknown> {
+  switch (type) {
+    case 'clock':
+      return { format24: true, seconds: true, date: false };
+    case 'timer':
+      return { mode: 'countdown', duration: 300, running: false, remaining: 300, endsAt: 0, startedAt: 0, accumulated: 0, label: 'Таймер' };
+    case 'counter':
+      return { label: 'Счётчик', value: 0, step: 1 };
+    case 'progress':
+      return { label: 'Прогресс', value: 0, max: 100 };
+    case 'goal':
+      return { label: 'Цель сбора', current: 0, target: 1000, currency: '₽' };
+    case 'random':
+      return { title: 'Случайный выбор', items: [], result: '', pickedAt: 0 };
+    case 'leaderboard':
+      return { title: 'Таблица лидеров', entries: [] };
+  }
+}
+
+function normWidgetData(type: WidgetType, raw: unknown): Record<string, unknown> {
+  const base = defaultData(type);
+  const d = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  switch (type) {
+    case 'clock':
+      return {
+        format24: d.format24 !== false,
+        seconds: d.seconds === true,
+        date: d.date === true,
+      };
+    case 'timer': {
+      const mode = d.mode === 'stopwatch' ? 'stopwatch' : 'countdown';
+      const duration = clamp(num(d.duration, 300), 1, 86_400);
+      const remaining = clamp(num(d.remaining, duration), 0, 86_400);
+      return {
+        mode,
+        duration,
+        running: d.running === true,
+        remaining,
+        endsAt: num(d.endsAt, 0),
+        startedAt: num(d.startedAt, 0),
+        accumulated: clamp(num(d.accumulated, 0), 0, 86_400),
+        label: safeStr(d.label, 40, 'Таймер'),
+      };
+    }
+    case 'counter':
+      return {
+        label: safeStr(d.label, 40, 'Счётчик'),
+        value: Math.round(clamp(num(d.value, 0), -1_000_000, 1_000_000)),
+        step: Math.round(clamp(num(d.step, 1), 1, 1000)),
+      };
+    case 'progress': {
+      const max = clamp(num(d.max, 100), 1, 1_000_000);
+      return {
+        label: safeStr(d.label, 40, 'Прогресс'),
+        value: clamp(num(d.value, 0), 0, max),
+        max,
+      };
+    }
+    case 'goal': {
+      const target = clamp(num(d.target, 1000), 1, 1_000_000_000);
+      return {
+        label: safeStr(d.label, 40, 'Цель сбора'),
+        current: clamp(num(d.current, 0), 0, 1_000_000_000),
+        target,
+        currency: safeStr(d.currency, 6, '₽') || '₽',
+      };
+    }
+    case 'random': {
+      const items = Array.isArray(d.items)
+        ? d.items.filter((x): x is string => typeof x === 'string').map((x) => x.slice(0, 60)).filter((x) => x.trim()).slice(0, MAX_RANDOM_ITEMS)
+        : [];
+      return {
+        title: safeStr(d.title, 40, 'Случайный выбор'),
+        items,
+        result: safeStr(d.result, 60),
+        pickedAt: num(d.pickedAt, 0),
+      };
+    }
+    case 'leaderboard': {
+      const entries: LeaderEntry[] = Array.isArray(d.entries)
+        ? d.entries
+            .filter((e): e is Record<string, unknown> => !!e && typeof e === 'object')
+            .map((e) => ({ name: safeStr(e.name, 40).trim(), score: Math.round(clamp(num(e.score, 0), -1_000_000, 1_000_000)) }))
+            .filter((e) => e.name)
+            .slice(0, MAX_LEADERS)
+        : [];
+      return { title: safeStr(d.title, 40, 'Таблица лидеров'), entries };
+    }
+  }
+}
+
+function normWidget(input: unknown, base?: Widget): Widget | null {
+  if (!input || typeof input !== 'object') return null;
+  const merged = { ...(base ?? {}), ...(input as Record<string, unknown>) } as Record<string, unknown>;
+  const type = widgetType(merged.type);
+  const id = typeof merged.id === 'string' && merged.id.length > 0 && merged.id.length <= 64 ? merged.id : newId('w_');
+  const expiresRaw = num(merged.expiresAt, 0);
+  // При смене типа данные сбрасываются к значениям по умолчанию.
+  const dataRaw = base && base.type !== type ? undefined : merged.data;
+  return {
+    id,
+    type,
+    x: clamp(num(merged.x, 0.05), -0.5, 1.5),
+    y: clamp(num(merged.y, 0.05), -0.5, 1.5),
+    w: clamp(num(merged.w, 0.28), 0.06, 1.5),
+    h: clamp(num(merged.h, 0.16), 0.05, 1.5),
+    opacity: clamp(num(merged.opacity, 1), 0, 1),
+    hidden: merged.hidden === true,
+    color: safeColor(merged.color, '#7c6eff'),
+    bg: safeBg(merged.bg) || 'rgba(12,15,22,0.82)',
+    data: normWidgetData(type, dataRaw),
+    ...(expiresRaw > 0 ? { expiresAt: expiresRaw } : {}),
+  };
+}
+
+const NOTIFY_POSITIONS: NotifyPosition[] = [
+  'top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right',
+];
+const NOTIFY_ANIMATIONS: NotifyAnimation[] = ['slide', 'fade', 'pop', 'bounce'];
+export const NOTIFY_TEMPLATES = ['default', 'success', 'warning', 'error', 'info', 'donation', 'follower', 'sub'];
+
+export function normNotification(input: unknown): Notification | null {
+  if (!input || typeof input !== 'object') return null;
+  const n = input as Record<string, unknown>;
+  const title = safeStr(n.title, 80).trim();
+  const message = safeStr(n.message, 200).trim();
+  if (!title && !message) return null;
+  const id = typeof n.id === 'string' && n.id.length > 0 && n.id.length <= 64 ? n.id : newId('n_');
+  return {
+    id,
+    title,
+    message,
+    template: NOTIFY_TEMPLATES.includes(n.template as string) ? (n.template as string) : 'default',
+    position: NOTIFY_POSITIONS.includes(n.position as NotifyPosition) ? (n.position as NotifyPosition) : 'top-right',
+    animation: NOTIFY_ANIMATIONS.includes(n.animation as NotifyAnimation) ? (n.animation as NotifyAnimation) : 'slide',
+    duration: Math.round(clamp(num(n.duration, 5000), 1000, 20_000)),
+    accent: safeColor(n.accent, '#7c6eff'),
+    icon: safeStr(n.icon, 8),
+  };
+}
+
+/** Применяет живую команду к виджету (мутирует data). false => неизвестная команда. */
+function controlWidget(widget: Widget, op: string, ev: Record<string, unknown>): boolean {
+  const d = widget.data;
+  const now = Date.now();
+  switch (widget.type) {
+    case 'counter': {
+      const step = num(d.step, 1);
+      if (op === 'inc') d.value = num(d.value, 0) + step;
+      else if (op === 'dec') d.value = num(d.value, 0) - step;
+      else if (op === 'reset') d.value = 0;
+      else if (op === 'set') d.value = num(ev.value, num(d.value, 0));
+      else return false;
+      return true;
+    }
+    case 'timer': {
+      const mode = d.mode === 'stopwatch' ? 'stopwatch' : 'countdown';
+      if (op === 'start') {
+        if (d.running === true) return true;
+        if (mode === 'countdown') {
+          let remaining = num(d.remaining, num(d.duration, 300));
+          if (remaining <= 0) remaining = num(d.duration, 300);
+          d.remaining = remaining;
+          d.endsAt = now + remaining * 1000;
+        } else {
+          d.startedAt = now;
+        }
+        d.running = true;
+      } else if (op === 'pause') {
+        if (d.running !== true) return true;
+        if (mode === 'countdown') {
+          d.remaining = clamp((num(d.endsAt, now) - now) / 1000, 0, 86_400);
+          d.endsAt = 0;
+        } else {
+          d.accumulated = num(d.accumulated, 0) + clamp((now - num(d.startedAt, now)) / 1000, 0, 86_400);
+          d.startedAt = 0;
+        }
+        d.running = false;
+      } else if (op === 'reset') {
+        d.running = false;
+        d.remaining = num(d.duration, 300);
+        d.endsAt = 0;
+        d.startedAt = 0;
+        d.accumulated = 0;
+      } else {
+        return false;
+      }
+      return true;
+    }
+    case 'progress': {
+      const max = num(d.max, 100);
+      if (op === 'set') d.value = clamp(num(ev.value, num(d.value, 0)), 0, max);
+      else if (op === 'add') d.value = clamp(num(d.value, 0) + num(ev.amount, 0), 0, max);
+      else return false;
+      return true;
+    }
+    case 'goal': {
+      if (op === 'set') d.current = clamp(num(ev.value, num(d.current, 0)), 0, 1_000_000_000);
+      else if (op === 'add') d.current = clamp(num(d.current, 0) + num(ev.amount, 0), 0, 1_000_000_000);
+      else return false;
+      return true;
+    }
+    case 'random': {
+      if (op !== 'pick') return false;
+      const items = Array.isArray(d.items) ? (d.items as string[]) : [];
+      if (!items.length) return false;
+      d.result = items[Math.floor(Math.random() * items.length)];
+      d.pickedAt = now;
+      return true;
+    }
+    case 'leaderboard': {
+      let entries: LeaderEntry[] = Array.isArray(d.entries) ? [...(d.entries as LeaderEntry[])] : [];
+      if (op === 'clear') {
+        entries = [];
+      } else if (op === 'remove') {
+        const name = safeStr(ev.name, 40).trim();
+        entries = entries.filter((e) => e.name !== name);
+      } else if (op === 'upsert' || op === 'bump') {
+        const name = safeStr(ev.name, 40).trim();
+        if (!name) return false;
+        const existing = entries.find((e) => e.name === name);
+        const score = op === 'bump'
+          ? num(existing?.score, 0) + num(ev.score, 1)
+          : num(ev.score, num(existing?.score, 0));
+        if (existing) existing.score = Math.round(score);
+        else entries.push({ name, score: Math.round(score) });
+      } else {
+        return false;
+      }
+      entries.sort((a, b) => b.score - a.score);
+      d.entries = entries.slice(0, MAX_LEADERS);
+      return true;
+    }
+    default:
+      return false;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Хранилище                                                           */
 /* ------------------------------------------------------------------ */
 
 function emptyState(): RoomState {
-  return { revision: 1, strokes: [], media: [], texts: [], updatedAt: Date.now() };
+  return { revision: 1, strokes: [], media: [], texts: [], widgets: [], updatedAt: Date.now() };
 }
 
 export class RoomStore {
@@ -238,6 +555,11 @@ export class RoomStore {
             : [],
           texts: Array.isArray(value.texts)
             ? value.texts.map((t) => normText(t)).filter((t): t is TextItem => !!t)
+            : [],
+          widgets: Array.isArray((value as Record<string, unknown>).widgets)
+            ? ((value as Record<string, unknown>).widgets as unknown[])
+                .map((w) => normWidget(w))
+                .filter((w): w is Widget => !!w)
             : [],
           updatedAt: num(value.updatedAt, Date.now()),
         });
@@ -304,6 +626,13 @@ export class RoomStore {
     state.texts = state.texts.filter((t) => {
       if (t.expiresAt && t.expiresAt <= now) {
         events.push({ t: 'text.remove', id: t.id });
+        return false;
+      }
+      return true;
+    });
+    state.widgets = state.widgets.filter((w) => {
+      if (w.expiresAt && w.expiresAt <= now) {
+        events.push({ t: 'widget.remove', id: w.id });
         return false;
       }
       return true;
@@ -443,12 +772,61 @@ export class RoomStore {
         return { ok: true, event: { t: 'text.remove', id } };
       }
 
+      case 'widget.add': {
+        const item = normWidget(ev.item);
+        if (!item) return { ok: false, error: 'bad_widget' };
+        let resync = false;
+        if (state.widgets.length >= MAX_WIDGETS) {
+          state.widgets.shift();
+          resync = true;
+        }
+        state.widgets.push(item);
+        touch();
+        return { ok: true, event: { t: 'widget.add', item }, resync };
+      }
+
+      case 'widget.update': {
+        const id = typeof ev.id === 'string' ? ev.id : '';
+        const index = state.widgets.findIndex((w) => w.id === id);
+        if (index < 0) return { ok: false, error: 'no_widget' };
+        const merged = normWidget({ ...(ev.patch as object), id }, state.widgets[index]);
+        if (!merged) return { ok: false, error: 'bad_widget' };
+        state.widgets[index] = merged;
+        touch();
+        return { ok: true, event: { t: 'widget.update', item: merged } };
+      }
+
+      case 'widget.control': {
+        const id = typeof ev.id === 'string' ? ev.id : '';
+        const index = state.widgets.findIndex((w) => w.id === id);
+        if (index < 0) return { ok: false, error: 'no_widget' };
+        const widget = state.widgets[index];
+        const op = typeof ev.op === 'string' ? ev.op : '';
+        if (!controlWidget(widget, op, ev)) return { ok: false, error: 'bad_control' };
+        const normalized = normWidget(widget, widget);
+        if (!normalized) return { ok: false, error: 'bad_widget' };
+        state.widgets[index] = normalized;
+        touch();
+        return { ok: true, event: { t: 'widget.update', item: normalized } };
+      }
+
+      case 'widget.remove': {
+        const id = typeof ev.id === 'string' ? ev.id : '';
+        const before = state.widgets.length;
+        state.widgets = state.widgets.filter((w) => w.id !== id);
+        if (state.widgets.length === before) return { ok: false, error: 'no_widget' };
+        touch();
+        return { ok: true, event: { t: 'widget.remove', id } };
+      }
+
       case 'scene.clear': {
-        const empty = !state.strokes.length && !state.media.length && !state.texts.length;
+        const empty =
+          !state.strokes.length && !state.media.length && !state.texts.length && !state.widgets.length;
         if (empty) return { ok: false, error: 'empty' };
         state.strokes = [];
         state.media = [];
         state.texts = [];
+        state.widgets = [];
         touch();
         return { ok: true, event: { t: 'scene.clear' } };
       }

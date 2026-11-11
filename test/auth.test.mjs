@@ -174,7 +174,34 @@ test('publicUser не раскрывает хеш пароля', () => {
     createdAt,
     updatedAt: createdAt,
   });
-  assert.deepEqual(view, { id: 'u_1', login: 'mod', role: 'mod', createdAt });
+  assert.equal(view.passwordHash, undefined, 'хеш пароля не раскрывается');
+  assert.equal(view.id, 'u_1');
+  assert.equal(view.login, 'mod');
+  assert.equal(view.role, 'mod');
+  assert.equal(view.createdAt, createdAt);
+  assert.ok(Array.isArray(view.perms) && view.perms.length > 0, 'legacy-модератор имеет полный доступ');
+
+  const restricted = publicUser({
+    id: 'u_2',
+    login: 'textonly',
+    passwordHash: '$2b$hash',
+    role: 'mod',
+    perms: ['text'],
+    createdAt,
+    updatedAt: createdAt,
+  });
+  assert.deepEqual(restricted.perms, ['text'], 'точные права сохраняются');
+
+  const admin = publicUser({
+    id: 'u_3',
+    login: 'boss',
+    passwordHash: '$2b$hash',
+    role: 'admin',
+    perms: ['text'],
+    createdAt,
+    updatedAt: createdAt,
+  });
+  assert.ok(admin.perms.includes('clear'), 'администратор всегда имеет все права');
 });
 
 test('hashPassword создаёт проверяемый хеш', async () => {

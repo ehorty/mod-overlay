@@ -4,7 +4,10 @@ import { WebSocket, WebSocketServer } from 'ws';
 import type { AppConfig } from './config';
 import { Db } from './db';
 import { AuthService, AuthUser } from './auth';
-import { RoomStore, RoomEvent, FanoutEvent } from './state';
+import { RoomStore, RoomEvent, FanoutEvent, normNotification } from './state';
+import { EventLog, FeedAction } from './events';
+import { SoundStore } from './sounds';
+import { hasPerm, permForEvent, resolvePerms } from './perms';
 import { log, warn } from './log';
 
 type Role = 'mod' | 'overlay';
@@ -28,12 +31,37 @@ interface HubContext {
   db: Db;
   auth: AuthService;
   rooms: RoomStore;
+  events: EventLog;
+  sounds: SoundStore;
 }
 
 const SOUND_PRESETS = new Set(['beep', 'buzzer', 'whoosh', 'drum', 'horn', 'pop']);
 const FX_KINDS = new Set(['flash', 'shake', 'confetti']);
 const CAPACITY = 400;
 const REFILL_PER_SEC = 200;
+
+const FX_LABELS: Record<string, string> = {
+  flash: 'вспышка',
+  shake: 'тряска',
+  confetti: 'конфетти',
+};
+const PRESET_LABELS: Record<string, string> = {
+  beep: 'бип',
+  buzzer: 'баззер',
+  whoosh: 'вжух',
+  drum: 'дробь',
+  horn: 'гудок',
+  pop: 'поп',
+};
+const WIDGET_LABELS: Record<string, string> = {
+  clock: 'часы',
+  timer: 'таймер',
+  counter: 'счётчик',
+  progress: 'прогресс',
+  goal: 'цель сбора',
+  random: 'случайный выбор',
+  leaderboard: 'лидеры',
+};
 
 function safeMediaUrl(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -54,6 +82,7 @@ export class Hub {
   private clients = new Set<Client>();
   private heartbeat: NodeJS.Timeout;
   private sweeper: NodeJS.Timeout;
+  private lastDraw = new Map<string, number>();
 
   constructor(private readonly ctx: HubContext) {
     this.wss = new WebSocketServer({
@@ -64,6 +93,8 @@ export class Hub {
     });
     this.wss.on('connection', (ws, req) => this.onConnection(ws, req));
     this.wss.on('error', (e) => warn('WebSocket:', (e as Error).message));
+
+    ctx.events.onRecord = (roomId, entry) => this.broadcastMods(roomId, { t: 'event', entry });
 
     this.heartbeat = setInterval(() => this.tick(), 30_000);
     this.heartbeat.unref?.();
@@ -146,10 +177,17 @@ export class Hub {
       roomId,
       serverTime: now,
       state: this.ctx.rooms.snapshot(roomId),
-      me: user ? { id: user.id, login: user.login, role: user.role } : null,
+      me: user
+        ? { id: user.id, login: user.login, role: user.role, perms: this.resolvePermsFor(user.id) }
+        : null,
     });
     this.broadcastPresence(roomId);
     log(`WS ${role === 'mod' ? `модератор ${user?.login}` : 'оверлей'} подключился (комната ${roomId}, всего ${this.clients.size})`);
+  }
+
+  private resolvePermsFor(userId: string) {
+    const record = this.ctx.db.findUserById(userId);
+    return record ? resolvePerms(record) : [];
   }
 
   /* ------------------------------- messages ----------------------------- */
@@ -213,6 +251,16 @@ export class Hub {
     }
     if (client.role === 'overlay') return;
 
+    const typeStr = typeof type === 'string' ? type : '';
+    const needed = permForEvent(typeStr);
+    if (needed) {
+      const record = client.user ? this.ctx.db.findUserById(client.user.id) : undefined;
+      if (!record || !hasPerm(record, needed)) {
+        this.send(client, { t: 'error', code: 'forbidden', perm: needed });
+        return;
+      }
+    }
+
     switch (type) {
       case 'sound': {
         const preset = typeof msg.preset === 'string' && SOUND_PRESETS.has(msg.preset) ? msg.preset : null;
@@ -222,7 +270,19 @@ export class Hub {
           t: 'sound',
           ...(preset ? { preset } : { url }),
           volume: Math.max(0, Math.min(1, Number(msg.volume ?? 1))),
+          queue: msg.queue !== false,
         });
+        const label = preset
+          ? PRESET_LABELS[preset] ?? preset
+          : this.ctx.sounds.list().find((s) => s.url === url)?.name ?? 'звук';
+        this.activity(client, 'sound', `звук: ${label}`);
+        return;
+      }
+
+      case 'sound.stop':
+      case 'sound.clearQueue': {
+        this.emit(client, { t: typeStr });
+        this.activity(client, 'sound', typeStr === 'sound.stop' ? 'остановил звук' : 'очистил очередь звуков');
         return;
       }
 
@@ -230,6 +290,7 @@ export class Hub {
         const kind = typeof msg.kind === 'string' && FX_KINDS.has(msg.kind) ? msg.kind : null;
         if (!kind) return this.send(client, { t: 'error', code: 'bad_fx' });
         this.emit(client, { t: 'fx', kind });
+        this.activity(client, 'fx', `эффект: ${FX_LABELS[kind] ?? kind}`);
         return;
       }
 
@@ -237,6 +298,15 @@ export class Hub {
         const text = typeof msg.text === 'string' ? msg.text.trim().slice(0, 500) : '';
         if (!text) return;
         this.emit(client, { t: 'tts.fallback', text, volume: Math.max(0, Math.min(1, Number(msg.volume ?? 1))) });
+        this.activity(client, 'tts', `озвучка: «${text.slice(0, 60)}»`);
+        return;
+      }
+
+      case 'notify': {
+        const item = normNotification(msg.item);
+        if (!item) return this.send(client, { t: 'error', code: 'bad_notify' });
+        this.emit(client, { t: 'notify', item });
+        this.activity(client, 'notify', `уведомление: «${(item.title || item.message).slice(0, 60)}»`);
         return;
       }
 
@@ -255,7 +325,67 @@ export class Hub {
             ts: Date.now(),
           } as FanoutEvent);
         }
+        this.sceneActivity(client, typeStr, result.event, msg);
       }
+    }
+  }
+
+  /** Запись в ленту событий от имени модератора. */
+  private activity(client: Client, action: FeedAction, detail: string): void {
+    this.ctx.events.record(client.roomId, {
+      by: client.user?.id ?? 'server',
+      login: client.user?.login ?? 'server',
+      action,
+      detail,
+    });
+  }
+
+  /** Записывает значимые действия со сценой, отсекая шум (перетаскивание, точки штриха). */
+  private sceneActivity(client: Client, type: string, event: RoomEvent, msg: Record<string, unknown>): void {
+    switch (type) {
+      case 'stroke.start': {
+        const now = Date.now();
+        const last = this.lastDraw.get(client.id) ?? 0;
+        if (now - last < 1500) return;
+        this.lastDraw.set(client.id, now);
+        this.activity(client, 'draw', 'рисует на экране');
+        return;
+      }
+      case 'draw.clear':
+        this.activity(client, 'draw', 'стёр рисунок');
+        return;
+      case 'media.add':
+        this.activity(client, 'media', 'добавил медиа на экран');
+        return;
+      case 'media.remove':
+        this.activity(client, 'media', 'убрал медиа с экрана');
+        return;
+      case 'text.add': {
+        const text = event.t === 'text.add' ? event.item.text : '';
+        this.activity(client, 'text', `текст: «${text.slice(0, 60)}»`);
+        return;
+      }
+      case 'text.remove':
+        this.activity(client, 'text', 'убрал текст');
+        return;
+      case 'widget.add': {
+        const wtype = event.t === 'widget.add' ? event.item.type : '';
+        this.activity(client, 'widgets', `виджет: ${WIDGET_LABELS[wtype] ?? wtype}`);
+        return;
+      }
+      case 'widget.remove':
+        this.activity(client, 'widgets', 'убрал виджет');
+        return;
+      case 'widget.control': {
+        const op = typeof msg.op === 'string' ? msg.op : '';
+        this.activity(client, 'widgets', `виджет: ${op}`);
+        return;
+      }
+      case 'scene.clear':
+        this.activity(client, 'clear', 'очистил весь экран');
+        return;
+      default:
+        return;
     }
   }
 
@@ -284,6 +414,29 @@ export class Hub {
       } catch {
         /* ignore */
       }
+    }
+  }
+
+  /** Рассылка только модераторам комнаты (лента событий, права). */
+  private broadcastMods(roomId: string, payload: unknown): void {
+    const data = JSON.stringify(payload);
+    for (const client of this.clients) {
+      if (client.roomId !== roomId || client.role !== 'mod') continue;
+      if (client.ws.readyState !== WebSocket.OPEN) continue;
+      try {
+        client.ws.send(data);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  /** Права пользователя изменены — сообщаем его подключённым клиентам. */
+  notifyUserPerms(userId: string): void {
+    const perms = this.resolvePermsFor(userId);
+    for (const client of this.clients) {
+      if (client.role !== 'mod' || client.user?.id !== userId) continue;
+      this.send(client, { t: 'perms', perms });
     }
   }
 

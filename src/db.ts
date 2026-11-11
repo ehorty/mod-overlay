@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { normalizePerms, type Perm } from './perms';
 
 export type Role = 'admin' | 'mod';
 
@@ -9,6 +10,8 @@ export interface UserRecord {
   login: string;
   passwordHash: string;
   role: Role;
+  /** Отсутствие поля (legacy) означает полный доступ; массив задаёт точные права. */
+  perms?: Perm[];
   createdAt: number;
   updatedAt: number;
 }
@@ -71,7 +74,9 @@ export class Db {
       const parsed = JSON.parse(raw) as Partial<DbFile>;
       const db: DbFile = {
         version: 1,
-        users: Array.isArray(parsed.users) ? parsed.users.filter(validUser) : [],
+        users: Array.isArray(parsed.users)
+          ? parsed.users.filter(validUser).map((u) => ({ ...u, perms: normalizePerms(u.perms) }))
+          : [],
         rooms: Array.isArray(parsed.rooms) ? parsed.rooms.filter(validRoom) : [],
       };
       if (!db.rooms.length) db.rooms = emptyDb().rooms;
@@ -135,6 +140,15 @@ export class Db {
   removeUser(id: string): void {
     this.data.users = this.data.users.filter((u) => u.id !== id);
     this.save();
+  }
+
+  setPerms(id: string, perms: Perm[] | undefined): boolean {
+    const user = this.findUserById(id);
+    if (!user) return false;
+    if (perms === undefined) delete user.perms;
+    else user.perms = perms;
+    this.save();
+    return true;
   }
 
   countAdmins(): number {

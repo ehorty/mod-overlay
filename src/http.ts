@@ -8,6 +8,9 @@ import { AuthService, AuthUser, hashPassword, publicUser } from './auth';
 import { RoomStore } from './state';
 import { TtsService } from './tts';
 import { Hub } from './hub';
+import { EventLog } from './events';
+import { SoundStore } from './sounds';
+import { hasPerm, normalizePerms, resolvePerms, PERM_LABELS } from './perms';
 import { log, warn } from './log';
 
 interface HttpContext {
@@ -17,6 +20,8 @@ interface HttpContext {
   rooms: RoomStore;
   tts: TtsService;
   hub: Hub;
+  events: EventLog;
+  sounds: SoundStore;
 }
 
 interface AuthedRequest extends Request {
@@ -67,7 +72,7 @@ function overlayUrl(req: Request, config: AppConfig, roomId: string, key: string
 }
 
 export function createApp(ctx: HttpContext): express.Express {
-  const { config, db, auth, rooms, tts, hub } = ctx;
+  const { config, db, auth, rooms, tts, hub, events, sounds } = ctx;
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy);
@@ -124,6 +129,18 @@ export function createApp(ctx: HttpContext): express.Express {
 
   function currentUser(req: AuthedRequest): UserRecord | undefined {
     return req.user ? db.findUserById(req.user.id) : undefined;
+  }
+
+  /** Требует конкретное право у текущего пользователя. */
+  function requirePerm(perm: Parameters<typeof hasPerm>[1]): RequestHandler {
+    return (req: AuthedRequest, res, next) => {
+      const user = currentUser(req);
+      if (!user || !hasPerm(user, perm)) {
+        res.status(403).json({ error: 'forbidden', perm });
+        return;
+      }
+      next();
+    };
   }
 
   /* ------------------------------- uploads ------------------------------- */
@@ -216,6 +233,8 @@ export function createApp(ctx: HttpContext): express.Express {
       },
       state,
       users: user.role === 'admin' ? db.data.users.map(publicUser) : undefined,
+      sounds: sounds.list(),
+      permLabels: PERM_LABELS,
       version: VERSION,
     });
   });
@@ -230,7 +249,7 @@ export function createApp(ctx: HttpContext): express.Express {
   const ttsBusy = new Set<string>();
   let ttsActive = 0;
 
-  app.post('/api/tts', requireAuth, async (req: AuthedRequest, res) => {
+  app.post('/api/tts', requireAuth, requirePerm('tts'), async (req: AuthedRequest, res) => {
     const user = currentUser(req);
     if (!user) return void res.status(401).json({ error: 'unauthorized' });
 
@@ -259,6 +278,12 @@ export function createApp(ctx: HttpContext): express.Express {
           by: user.id,
           ts: Date.now(),
         });
+        events.record(room.id, {
+          by: user.id,
+          login: user.login,
+          action: 'tts',
+          detail: `озвучка: «${text.slice(0, 60)}»`,
+        });
       }
       res.json({ url: result.url, duration: result.duration });
     } catch (e) {
@@ -270,16 +295,31 @@ export function createApp(ctx: HttpContext): express.Express {
     }
   });
 
-  app.post('/api/tts/stop', requireAuth, (req: AuthedRequest, res) => {
+  app.post('/api/tts/stop', requireAuth, requirePerm('tts'), (req: AuthedRequest, res) => {
     const user = currentUser(req);
     if (!user) return void res.status(401).json({ error: 'unauthorized' });
     hub.broadcast(db.getMainRoom().id, { t: 'tts.stop', by: user.id, ts: Date.now() });
+    events.record(db.getMainRoom().id, {
+      by: user.id,
+      login: user.login,
+      action: 'tts',
+      detail: 'остановил озвучку',
+    });
     res.json({ ok: true });
   });
 
   /* ------------------------------- uploads ------------------------------- */
 
-  app.post('/api/upload', requireAuth, upload.single('file'), (req, res) => {
+  const canUpload: RequestHandler = (req: AuthedRequest, res, next) => {
+    const user = currentUser(req);
+    if (!user || (!hasPerm(user, 'media') && !hasPerm(user, 'sound'))) {
+      res.status(403).json({ error: 'forbidden', perm: 'media' });
+      return;
+    }
+    next();
+  };
+
+  app.post('/api/upload', requireAuth, canUpload, upload.single('file'), (req, res) => {
     const file = req.file;
     if (!file) {
       res.status(400).json({ error: 'no_file' });
@@ -344,6 +384,86 @@ export function createApp(ctx: HttpContext): express.Express {
     const ok = await auth.setPassword(String(req.params.id), password);
     if (!ok) return void res.status(404).json({ error: 'not_found' });
     res.json({ ok: true });
+  });
+
+  app.get('/api/perms', requireAuth, (_req, res) => {
+    res.json({ perms: PERM_LABELS });
+  });
+
+  app.post('/api/users/:id/perms', requireAuth, requireAdmin, (req: AuthedRequest, res) => {
+    const id = String(req.params.id);
+    const target = db.findUserById(id);
+    if (!target) return void res.status(404).json({ error: 'not_found' });
+    if (target.role === 'admin') return void res.status(400).json({ error: 'admin_has_all' });
+    const body = req.body as Record<string, unknown>;
+    // full:true снимает ограничения (legacy-доступ); иначе нормализуем список.
+    const perms = body.full === true ? undefined : normalizePerms(body.perms);
+    if (body.full !== true && perms === undefined) {
+      return void res.status(400).json({ error: 'bad_perms' });
+    }
+    db.setPerms(id, perms);
+    hub.notifyUserPerms(id);
+    const updated = db.findUserById(id);
+    log(`Права пользователя ${target.login} обновлены`);
+    res.json({ ok: true, user: updated ? publicUser(updated) : undefined });
+  });
+
+  /* ---------------------------- event feed ------------------------------- */
+
+  app.get('/api/events', requireAuth, (req: AuthedRequest, res) => {
+    const limit = Number(req.query.limit ?? 120);
+    res.json({ events: events.list(db.getMainRoom().id, Number.isFinite(limit) ? limit : 120) });
+  });
+
+  app.delete('/api/events', requireAuth, requireAdmin, (_req, res) => {
+    events.clear(db.getMainRoom().id);
+    hub.broadcast(db.getMainRoom().id, { t: 'events.clear' });
+    res.json({ ok: true });
+  });
+
+  /* ----------------------------- soundboard ------------------------------ */
+
+  app.get('/api/sounds', requireAuth, (_req, res) => {
+    res.json({ sounds: sounds.list() });
+  });
+
+  app.post('/api/sounds', requireAuth, requirePerm('sound'), (req: AuthedRequest, res) => {
+    const user = currentUser(req);
+    const body = req.body as Record<string, unknown>;
+    try {
+      const { sound, created } = sounds.add(body);
+      if (created && user) {
+        events.record(db.getMainRoom().id, {
+          by: user.id,
+          login: user.login,
+          action: 'sound',
+          detail: `добавил звук: «${sound.name}»`,
+        });
+      }
+      res.status(created ? 201 : 200).json({ sound, created });
+    } catch (e) {
+      const message = (e as Error).message;
+      const status = message === 'limit' ? 409 : 400;
+      res.status(status).json({ error: message === 'limit' ? 'sound_limit' : 'bad_url' });
+    }
+  });
+
+  app.patch('/api/sounds/:id', requireAuth, requirePerm('sound'), (req: AuthedRequest, res) => {
+    const body = req.body as Record<string, unknown>;
+    const sound = sounds.update(String(req.params.id), body);
+    if (!sound) return void res.status(404).json({ error: 'not_found' });
+    res.json({ sound });
+  });
+
+  app.delete('/api/sounds/:id', requireAuth, requirePerm('sound'), (req: AuthedRequest, res) => {
+    const ok = sounds.remove(String(req.params.id));
+    if (!ok) return void res.status(404).json({ error: 'not_found' });
+    res.json({ ok: true });
+  });
+
+  app.post('/api/sounds/reorder', requireAuth, requirePerm('sound'), (req: AuthedRequest, res) => {
+    const body = req.body as Record<string, unknown>;
+    res.json({ sounds: sounds.reorder(body.ids) });
   });
 
   app.post('/api/room/rotate-key', requireAuth, requireAdmin, (req, res) => {

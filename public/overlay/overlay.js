@@ -12,6 +12,10 @@ const flashEl = document.getElementById('flash');
 const statusEl = document.getElementById('status');
 const confettiCanvas = document.getElementById('confetti');
 const confettiCtx = confettiCanvas.getContext('2d');
+const notifyLayer = document.getElementById('notify-layer');
+
+const esc = (value) =>
+  String(value).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 
 /** Ничего не показываем в эфире — только в консоль OBS. */
 function log(...args) {
@@ -106,8 +110,18 @@ function handle(msg) {
     case 'text.remove':
       scene.removeText(msg.id);
       break;
+    case 'widget.add':
+    case 'widget.update':
+      scene.upsertWidget(msg.item);
+      break;
+    case 'widget.remove':
+      scene.removeWidget(msg.id);
+      break;
     case 'scene.clear':
       scene.clearAll();
+      break;
+    case 'notify':
+      showNotification(msg.item);
       break;
     case 'tts':
       enqueueTts(msg.url, msg.volume);
@@ -120,6 +134,12 @@ function handle(msg) {
       break;
     case 'sound':
       playSound(msg);
+      break;
+    case 'sound.stop':
+      stopSounds();
+      break;
+    case 'sound.clearQueue':
+      clearSoundQueue();
       break;
     case 'fx':
       playFx(msg.kind);
@@ -276,14 +296,141 @@ function playPreset(name, volume) {
   }
 }
 
+const soundQueue = [];
+let soundPlaying = false;
+let currentSound = null;
+
+const clampVol = (v) => Math.max(0, Math.min(1, Number(v) || 1));
+
 function playSound(msg) {
   if (msg.url) {
-    const audio = new Audio(msg.url);
-    audio.volume = Math.max(0, Math.min(1, Number(msg.volume) || 1));
-    audio.play().catch((e) => log('Звук не воспроизведён:', e?.name));
+    if (msg.queue === false) {
+      const audio = new Audio(msg.url);
+      audio.volume = clampVol(msg.volume);
+      audio.play().catch((e) => log('Звук не воспроизведён:', e?.name));
+      return;
+    }
+    soundQueue.push({ url: msg.url, volume: clampVol(msg.volume) });
+    if (soundQueue.length > 24) soundQueue.splice(0, soundQueue.length - 24);
+    pumpSounds();
     return;
   }
   playPreset(msg.preset, msg.volume);
+}
+
+function pumpSounds() {
+  if (soundPlaying || !soundQueue.length) return;
+  const item = soundQueue[0];
+  soundPlaying = true;
+  const audio = new Audio(item.url);
+  currentSound = audio;
+  audio.volume = item.volume;
+  const done = () => {
+    if (currentSound === audio) currentSound = null;
+    soundPlaying = false;
+    soundQueue.shift();
+    setTimeout(pumpSounds, 40);
+  };
+  audio.onended = done;
+  audio.onerror = () => {
+    log('Ошибка воспроизведения звука:', item.url);
+    done();
+  };
+  audio.play().catch((e) => {
+    log('Звук не воспроизведён:', e?.name);
+    done();
+  });
+}
+
+function stopSounds() {
+  soundQueue.length = 0;
+  soundPlaying = false;
+  if (currentSound) {
+    currentSound.onended = null;
+    currentSound.onerror = null;
+    try {
+      currentSound.pause();
+    } catch {
+      /* ignore */
+    }
+    currentSound = null;
+  }
+}
+
+function clearSoundQueue() {
+  soundQueue.length = 0;
+}
+
+/* ----------------------------- уведомления ------------------------------ */
+
+const NOTIFY_TEMPLATES = {
+  default: { accent: '#7c6eff', icon: '🔔' },
+  success: { accent: '#3ddc97', icon: '✅' },
+  warning: { accent: '#ffcc00', icon: '⚠️' },
+  error: { accent: '#ff5c5c', icon: '⛔' },
+  info: { accent: '#2fb6ff', icon: 'ℹ️' },
+  donation: { accent: '#ffb020', icon: '💰' },
+  follower: { accent: '#ff5cae', icon: '❤️' },
+  sub: { accent: '#bf5af2', icon: '⭐' },
+};
+
+const NOTIFY_POSITIONS = ['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'];
+const NOTIFY_ANIMATIONS = ['slide', 'fade', 'pop', 'bounce'];
+const notifyStacks = new Map();
+const NOTIFY_STACK_CAP = 5;
+
+function notifyStack(position) {
+  let stack = notifyStacks.get(position);
+  if (stack) return stack;
+  stack = document.createElement('div');
+  stack.className = `notify-stack pos-${position}`;
+  notifyLayer.append(stack);
+  notifyStacks.set(position, stack);
+  return stack;
+}
+
+function slideVars(position) {
+  if (position.endsWith('left')) return ['-120%', '0'];
+  if (position.endsWith('right')) return ['120%', '0'];
+  return ['0', position.startsWith('top') ? '-120%' : '120%'];
+}
+
+function showNotification(item) {
+  if (!notifyLayer || !item) return;
+  const template = NOTIFY_TEMPLATES[item.template] || NOTIFY_TEMPLATES.default;
+  const accent = /^#[0-9a-f]{6}$/i.test(item.accent || '') ? item.accent : template.accent;
+  const icon = String(item.icon || '').slice(0, 8) || template.icon;
+  const position = NOTIFY_POSITIONS.includes(item.position) ? item.position : 'top-right';
+  const animation = NOTIFY_ANIMATIONS.includes(item.animation) ? item.animation : 'slide';
+  const duration = Math.max(1000, Math.min(20000, Number(item.duration) || 5000));
+  const [sx, sy] = slideVars(position);
+
+  const stack = notifyStack(position);
+  const card = document.createElement('div');
+  card.className = `notify-card anim-${animation}`;
+  card.style.setProperty('--naccent', accent);
+  card.style.setProperty('--slide-x', sx);
+  card.style.setProperty('--slide-y', sy);
+  const title = String(item.title || '').slice(0, 80);
+  const message = String(item.message || '').slice(0, 200);
+  card.innerHTML =
+    `<span class="notify-icon">${esc(icon)}</span>` +
+    `<div class="notify-content">` +
+    (title ? `<div class="notify-title">${esc(title)}</div>` : '') +
+    (message ? `<div class="notify-message">${esc(message)}</div>` : '') +
+    `</div>` +
+    `<div class="notify-progress"><i style="animation-duration:${duration}ms"></i></div>`;
+  stack.prepend(card);
+  while (stack.children.length > NOTIFY_STACK_CAP) stack.lastElementChild.remove();
+
+  let removed = false;
+  const remove = () => {
+    if (removed) return;
+    removed = true;
+    card.classList.add('leaving');
+    setTimeout(() => card.remove(), 340);
+  };
+  setTimeout(remove, duration);
 }
 
 /* -------------------------------- эффекты ------------------------------- */

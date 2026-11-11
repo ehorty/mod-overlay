@@ -96,3 +96,240 @@ body {
 .status.off {
   color: #ff8a80;
 }
+
+/* ----------------------------- уведомления ------------------------------ */
+
+.notify-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 8;
+  font-family: "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
+}
+
+.notify-stack {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: min(420px, 42vw);
+}
+
+.notify-stack.pos-top-left {
+  top: 28px;
+  left: 28px;
+  align-items: flex-start;
+}
+
+.notify-stack.pos-top-center {
+  top: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  align-items: center;
+}
+
+.notify-stack.pos-top-right {
+  top: 28px;
+  right: 28px;
+  align-items: flex-end;
+}
+
+.notify-stack.pos-bottom-left {
+  bottom: 28px;
+  left: 28px;
+  flex-direction: column-reverse;
+  align-items: flex-start;
+}
+
+.notify-stack.pos-bottom-center {
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  flex-direction: column-reverse;
+  align-items: center;
+}
+
+.notify-stack.pos-bottom-right {
+  bottom: 28px;
+  right: 28px;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+}
+
+.notify-card {
+  --naccent: #7c6eff;
+  --slide-x: 120%;
+  --slide-y: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 240px;
+  max-width: 100%;
+  padding: 14px 18px 16px;
+  border-radius: 16px;
+  overflow: hidden;
+  color: #f3f4fa;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--naccent) 26%, #12141d), #12141d 62%);
+  border: 1px solid color-mix(in srgb, var(--naccent) 55%, transparent);
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.5),
+    0 0 26px color-mix(in srgb, var(--naccent) 30%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+}
+
+.notify-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--naccent);
+  box-shadow: 0 0 14px var(--naccent);
+}
+
+.notify-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 24px;
+  line-height: 1;
+  background: color-mix(in srgb, var(--naccent) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--naccent) 45%, transparent);
+}
+
+.notify-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.notify-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  overflow-wrap: break-word;
+}
+
+.notify-message {
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: #c4c8da;
+  overflow-wrap: break-word;
+}
+
+.notify-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.notify-progress i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: var(--naccent);
+  box-shadow: 0 0 8px var(--naccent);
+  transform-origin: left center;
+  animation: notify-timer linear forwards;
+}
+
+@keyframes notify-timer {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* --- появление --- */
+
+.notify-card.anim-slide {
+  animation: notify-slide 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes notify-slide {
+  from {
+    opacity: 0;
+    transform: translate(var(--slide-x), var(--slide-y));
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, 0);
+  }
+}
+
+.notify-card.anim-fade {
+  animation: notify-fade 420ms ease both;
+}
+
+@keyframes notify-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.notify-card.anim-pop {
+  animation: notify-pop 480ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes notify-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.notify-card.anim-bounce {
+  animation: notify-bounce 700ms cubic-bezier(0.28, 0.84, 0.42, 1) both;
+}
+
+@keyframes notify-bounce {
+  0% {
+    opacity: 0;
+    transform: translateY(var(--slide-y, -40px)) scale(0.9);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(6px) scale(1.02);
+  }
+  75% {
+    transform: translateY(-3px) scale(0.99);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* --- исчезновение --- */
+
+.notify-card.leaving {
+  animation: notify-out 320ms ease forwards;
+}
+
+@keyframes notify-out {
+  to {
+    opacity: 0;
+    transform: translate(calc(var(--slide-x) * 0.35), calc(var(--slide-y) * 0.35)) scale(0.94);
+  }
+}

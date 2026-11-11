@@ -4,12 +4,14 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Db, Role, UserRecord, newId } from './db';
+import { Perm, resolvePerms } from './perms';
 import { log, warn } from './log';
 
 export interface PublicUser {
   id: string;
   login: string;
   role: Role;
+  perms: Perm[];
   createdAt: number;
 }
 
@@ -41,7 +43,13 @@ export function hashPassword(password: string): Promise<string> {
 }
 
 export function publicUser(user: UserRecord): PublicUser {
-  return { id: user.id, login: user.login, role: user.role, createdAt: user.createdAt };
+  return {
+    id: user.id,
+    login: user.login,
+    role: user.role,
+    perms: resolvePerms(user),
+    createdAt: user.createdAt,
+  };
 }
 
 export class AuthService {

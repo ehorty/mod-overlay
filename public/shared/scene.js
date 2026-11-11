@@ -4,6 +4,8 @@
  * при любом разрешении.
  */
 
+import { applyWidgetStyle, buildWidgetEl, renderWidget, tickWidget } from './widgets.js';
+
 const MARKER_ALPHA = 0.32;
 
 function el(tag, className, parent) {
@@ -21,9 +23,10 @@ export class SceneView {
   constructor(root, options = {}) {
     this.root = root;
     this.options = options;
-    this.state = { revision: 0, strokes: [], media: [], texts: [] };
+    this.state = { revision: 0, strokes: [], media: [], texts: [], widgets: [] };
     this.mediaEls = new Map();
     this.textEls = new Map();
+    this.widgetEls = new Map();
     this.drawn = new Map();
     this.width = 0;
     this.height = 0;
@@ -33,6 +36,7 @@ export class SceneView {
     this.observer = new ResizeObserver(() => this.layout());
     this.observer.observe(root);
     this.layout();
+    this.ticker = setInterval(() => this.tickWidgets(), 250);
   }
 
   build() {
@@ -40,6 +44,7 @@ export class SceneView {
     this.root.replaceChildren();
     this.mediaLayer = el('div', 'scene-layer scene-media', this.root);
     this.textLayer = el('div', 'scene-layer scene-texts', this.root);
+    this.widgetLayer = el('div', 'scene-layer scene-widgets', this.root);
     this.canvas = el('canvas', 'scene-layer scene-canvas', this.root);
     this.ctx = this.canvas.getContext('2d');
     this.fxLayer = el('div', 'scene-layer scene-fx', this.root);
@@ -63,6 +68,7 @@ export class SceneView {
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.redrawAll();
     this.layoutTexts();
+    this.layoutWidgets();
   }
 
   layoutTexts() {
@@ -72,24 +78,44 @@ export class SceneView {
     }
   }
 
+  layoutWidgets() {
+    for (const item of this.state.widgets) {
+      const node = this.widgetEls.get(item.id);
+      if (node) renderWidget(node, item, this.height);
+    }
+  }
+
+  tickWidgets() {
+    for (const item of this.state.widgets) {
+      if (item.type !== 'clock' && item.type !== 'timer') continue;
+      if (item.hidden) continue;
+      const node = this.widgetEls.get(item.id);
+      if (node) tickWidget(node, item);
+    }
+  }
+
   /* ------------------------------- state ------------------------------- */
 
   setState(state) {
-    const source = state ?? { strokes: [], media: [], texts: [] };
+    const source = state ?? { strokes: [], media: [], texts: [], widgets: [] };
     this.state = {
       revision: source.revision ?? 0,
       strokes: copy(source.strokes ?? []),
       media: copy(source.media ?? []),
       texts: copy(source.texts ?? []),
+      widgets: copy(source.widgets ?? []),
     };
     this.drawn.clear();
     for (const node of this.mediaEls.values()) node.remove();
     for (const node of this.textEls.values()) node.remove();
+    for (const node of this.widgetEls.values()) node.remove();
     this.mediaEls.clear();
     this.textEls.clear();
+    this.widgetEls.clear();
 
     for (const item of this.state.media) this.addMediaEl(item);
     for (const item of this.state.texts) this.addTextEl(item);
+    for (const item of this.state.widgets) this.addWidgetEl(item);
     this.redrawAll();
     this.layoutTexts();
     this.notify();
@@ -298,16 +324,48 @@ export class SceneView {
     this.notify();
   }
 
+  /* ------------------------------- widgets ------------------------------ */
+
+  addWidgetEl(item) {
+    const node = buildWidgetEl(item, this.height);
+    this.widgetLayer.append(node);
+    this.widgetEls.set(item.id, node);
+  }
+
+  upsertWidget(item) {
+    const node = this.widgetEls.get(item.id);
+    if (node) renderWidget(node, item, this.height);
+    else this.addWidgetEl(item);
+    const index = this.state.widgets.findIndex((w) => w.id === item.id);
+    if (index >= 0) this.state.widgets[index] = item;
+    else this.state.widgets.push(item);
+    this.notify();
+  }
+
+  removeWidget(id) {
+    const node = this.widgetEls.get(id);
+    if (node) node.remove();
+    this.widgetEls.delete(id);
+    this.state.widgets = this.state.widgets.filter((w) => w.id !== id);
+    this.notify();
+  }
+
   /* ------------------------------- helpers ------------------------------ */
 
   updateItemLocal(kind, id, patch) {
-    const list = kind === 'media' ? this.state.media : this.state.texts;
+    const list = kind === 'media' ? this.state.media : kind === 'widget' ? this.state.widgets : this.state.texts;
     const item = list.find((x) => x.id === id);
     if (!item) return;
     Object.assign(item, patch);
     if (kind === 'media') {
       const node = this.mediaEls.get(id);
       if (node) this.applyMediaStyle(node, item);
+    } else if (kind === 'widget') {
+      const node = this.widgetEls.get(id);
+      if (node) {
+        if ('data' in patch || 'color' in patch || 'bg' in patch || 'type' in patch) renderWidget(node, item, this.height);
+        else applyWidgetStyle(node, item, this.height);
+      }
     } else {
       const node = this.textEls.get(id);
       if (node) this.applyTextStyle(node, item);
@@ -315,7 +373,7 @@ export class SceneView {
   }
 
   getItem(kind, id) {
-    const list = kind === 'media' ? this.state.media : this.state.texts;
+    const list = kind === 'media' ? this.state.media : kind === 'widget' ? this.state.widgets : this.state.texts;
     return list.find((x) => x.id === id) ?? null;
   }
 
@@ -327,15 +385,26 @@ export class SceneView {
     return this.textEls.get(id) ?? null;
   }
 
+  widgetEl(id) {
+    return this.widgetEls.get(id) ?? null;
+  }
+
+  itemEl(kind, id) {
+    return kind === 'media' ? this.mediaEl(id) : kind === 'widget' ? this.widgetEl(id) : this.textEl(id);
+  }
+
   clearAll() {
     this.state.strokes = [];
     this.state.media = [];
     this.state.texts = [];
+    this.state.widgets = [];
     this.drawn.clear();
     for (const node of this.mediaEls.values()) node.remove();
     for (const node of this.textEls.values()) node.remove();
+    for (const node of this.widgetEls.values()) node.remove();
     this.mediaEls.clear();
     this.textEls.clear();
+    this.widgetEls.clear();
     this.redrawAll();
     this.notify();
   }

@@ -34,7 +34,10 @@ test('панель: вкладки и секции совпадают', () => {
   const html = read('public', 'panel', 'index.html');
   const tabs = [...html.matchAll(/data-tab="([^"]+)"/g)].map((m) => m[1]);
   const panels = [...html.matchAll(/data-panel="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(new Set(tabs), new Set(['media', 'text', 'tts', 'sound', 'fx', 'admin']));
+  assert.deepEqual(
+    new Set(tabs),
+    new Set(['media', 'text', 'tts', 'sound', 'widgets', 'notify', 'fx', 'feed', 'admin']),
+  );
   assert.deepEqual(new Set(panels), new Set(tabs));
   assert.equal(new Set(tabs).size, tabs.length, 'вкладки не дублируются');
   assert.equal(new Set(panels).size, panels.length, 'секции не дублируются');
@@ -132,7 +135,12 @@ test('настройка: все обращения к мосту есть в pr
 });
 
 test('синтаксис фронтенда и Electron корректен', () => {
-  for (const file of ['public/panel/panel.js', 'public/overlay/overlay.js', 'public/shared/scene.js']) {
+  for (const file of [
+    'public/panel/panel.js',
+    'public/overlay/overlay.js',
+    'public/shared/scene.js',
+    'public/shared/widgets.js',
+  ]) {
     const source = read(...file.split('/'));
     const result = spawnSync(process.execPath, ['--input-type=module', '--check'], {
       input: source,

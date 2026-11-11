@@ -117,8 +117,11 @@
             <button data-tab="media" class="active">Медиа</button>
             <button data-tab="text">Текст</button>
             <button data-tab="tts">TTS</button>
-            <button data-tab="sound">Звук</button>
+            <button data-tab="sound">Звуки</button>
+            <button data-tab="widgets">Виджеты</button>
+            <button data-tab="notify">Уведомления</button>
             <button data-tab="fx">FX</button>
+            <button data-tab="feed">Лента</button>
             <button data-tab="admin" id="tab-admin" hidden>Админ</button>
           </nav>
 
@@ -236,10 +239,10 @@
               </div>
             </section>
 
-            <!-- ЗВУКИ -->
+            <!-- ЗВУКИ / SOUNDBOARD -->
             <section class="tab-panel" data-panel="sound">
               <div class="block">
-                <h3>Встроенные</h3>
+                <h3>Быстрые звуки</h3>
                 <div class="grid-btns" id="sound-presets">
                   <button class="btn secondary" data-preset="beep">Бип</button>
                   <button class="btn secondary" data-preset="buzzer">Баззер</button>
@@ -253,14 +256,90 @@
                   <input type="range" id="sound-volume" min="0" max="100" value="80" />
                   <output id="sound-volume-label">80%</output>
                 </div>
+                <div class="row">
+                  <label class="check grow"><input type="checkbox" id="sound-queue" checked /> очередь</label>
+                  <button class="btn ghost" id="sound-stop" title="Остановить звук в эфире">Стоп</button>
+                  <button class="btn ghost" id="sound-clear-queue" title="Очистить очередь">Очистить</button>
+                </div>
               </div>
               <div class="block">
-                <h3>Свои звуки</h3>
+                <h3>Библиотека <span class="count" id="sound-count">0</span></h3>
+                <input type="text" id="sound-search" placeholder="Поиск звука…" />
+                <div class="sound-cats" id="sound-cats"></div>
+                <label class="check"><input type="checkbox" id="sound-fav-filter" /> только избранное</label>
+                <div class="sound-grid" id="sound-grid"></div>
                 <label class="drop small">
                   <input type="file" id="sound-file" accept="audio/*" hidden />
-                  <span>Загрузить аудио<small>MP3, WAV, OGG, M4A</small></span>
+                  <span>Загрузить аудио<small>MP3, WAV, OGG, M4A · до 25 МБ</small></span>
                 </label>
-                <div class="item-list" id="sound-list"></div>
+                <div class="row">
+                  <input type="url" id="sound-url" placeholder="https://… ссылка на аудио" />
+                  <button class="btn secondary" id="sound-url-add">Добавить</button>
+                </div>
+                <p class="hint">
+                  Клик по плашке — воспроизвести. ★ — избранное, ✎ — название, категория и горячая клавиша.
+                  Перетаскивайте плашки, чтобы менять порядок.
+                </p>
+              </div>
+            </section>
+
+            <!-- ВИДЖЕТЫ -->
+            <section class="tab-panel" data-panel="widgets">
+              <div class="block">
+                <h3>Добавить виджет</h3>
+                <div class="widget-picker" id="widget-picker"></div>
+                <p class="hint">Выберите тип — виджет появится на сцене. Двигайте и растягивайте его прямо на экране.</p>
+              </div>
+              <div class="block">
+                <h3>На экране <span class="count" id="widget-count">0</span></h3>
+                <div class="item-list" id="widget-list"></div>
+              </div>
+              <div class="block" id="widget-editor-block" hidden>
+                <h3>Настройка · <span id="widget-editor-type">виджет</span></h3>
+                <div class="stack" id="widget-editor"></div>
+              </div>
+            </section>
+
+            <!-- УВЕДОМЛЕНИЯ -->
+            <section class="tab-panel" data-panel="notify">
+              <div class="block">
+                <h3>Новое уведомление</h3>
+                <input type="text" id="notify-title" maxlength="80" placeholder="Заголовок — например: Новый донат" />
+                <textarea id="notify-message" rows="2" maxlength="200" placeholder="Текст уведомления…"></textarea>
+                <label class="field">
+                  <span>Шаблон</span>
+                  <select id="notify-template"></select>
+                </label>
+                <div class="row">
+                  <label class="field grow">
+                    <span>Позиция</span>
+                    <select id="notify-position"></select>
+                  </label>
+                  <label class="field grow">
+                    <span>Анимация</span>
+                    <select id="notify-animation"></select>
+                  </label>
+                </div>
+                <div class="row between">
+                  <span class="muted">Длительность</span>
+                  <input type="range" id="notify-duration" min="1" max="20" value="5" />
+                  <output id="notify-duration-label">5 с</output>
+                </div>
+                <div class="row between">
+                  <span class="muted">Акцент</span>
+                  <input type="color" id="notify-accent" value="#7c6eff" />
+                  <span class="muted">Иконка</span>
+                  <input type="text" id="notify-icon" maxlength="8" placeholder="🔔" style="width:70px;flex:none" />
+                </div>
+                <div class="row">
+                  <button class="btn primary grow" id="notify-send">Показать в эфире</button>
+                  <button class="btn ghost" id="notify-preview-btn">Предпросмотр</button>
+                </div>
+              </div>
+              <div class="block">
+                <h3>Предпросмотр</h3>
+                <div class="notify-preview-stage" id="notify-preview"></div>
+                <p class="hint">Так карточка выглядит в эфире. Шаблоны задают цвет и иконку по умолчанию.</p>
               </div>
             </section>
 
@@ -280,6 +359,20 @@
                 <button class="btn danger-ghost full" id="fx-clear-all">Очистить всё</button>
               </div>
               <p class="hint">Эффекты видят все зрители оверлея. Используйте с умом.</p>
+            </section>
+
+            <!-- ЛЕНТА СОБЫТИЙ -->
+            <section class="tab-panel" data-panel="feed">
+              <div class="block">
+                <h3>Лента событий</h3>
+                <input type="text" id="feed-search" placeholder="Поиск по действиям…" />
+                <div class="feed-filters" id="feed-filters"></div>
+                <div class="row between">
+                  <span class="muted" id="feed-count">0 событий</span>
+                  <button class="btn danger-ghost" id="feed-clear" hidden>Очистить ленту</button>
+                </div>
+              </div>
+              <div class="feed-list" id="feed-list"></div>
             </section>
 
             <!-- АДМИН -->
@@ -310,8 +403,8 @@
                   <button class="btn primary" type="submit">Добавить</button>
                 </form>
                 <p class="hint">
-                  Модератор входит на этот же сайт со своим логином и паролем: ему доступны рисование,
-                  медиа, текст, TTS, звуки и эффекты. Вкладка «Админ» видна только администраторам.
+                  Кнопка 🛡 открывает права модератора: можно разрешить только текст, только TTS,
+                  рисование и эффекты — любую комбинацию. Администраторы всегда имеют полный доступ.
                 </p>
               </div>
             </section>
@@ -351,6 +444,45 @@
           <button class="btn primary" type="submit">Сохранить</button>
         </div>
       </form>
+    </div>
+
+    <!-- Настройка звука -->
+    <div class="modal" id="sound-modal" hidden>
+      <form class="modal-card" id="sound-form">
+        <h3>Настройка звука</h3>
+        <label class="field"><span>Название</span><input id="sound-edit-name" maxlength="60" /></label>
+        <label class="field">
+          <span>Категория</span>
+          <input id="sound-edit-category" maxlength="30" list="sound-cat-list" placeholder="Общее" />
+        </label>
+        <datalist id="sound-cat-list"></datalist>
+        <label class="field">
+          <span>Горячая клавиша</span>
+          <input id="sound-edit-hotkey" maxlength="3" placeholder="буква, цифра или f1–f12" autocapitalize="none" />
+        </label>
+        <label class="check"><input type="checkbox" id="sound-edit-fav" /> в избранном</label>
+        <div class="form-error" id="sound-edit-error"></div>
+        <div class="modal-actions">
+          <button class="btn danger-ghost" type="button" id="sound-edit-delete">Удалить</button>
+          <span class="grow"></span>
+          <button class="btn ghost" type="button" id="sound-edit-cancel">Закрыть</button>
+          <button class="btn primary" type="submit">Сохранить</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Права модератора -->
+    <div class="modal" id="perms-modal" hidden>
+      <div class="modal-card">
+        <h3>Права · <span id="perms-user">модератор</span></h3>
+        <p class="muted">Отметьте, что разрешено этому модератору. Остальное будет скрыто и заблокировано.</p>
+        <label class="check"><input type="checkbox" id="perms-full" /> полный доступ без ограничений</label>
+        <div class="perms-grid" id="perms-grid"></div>
+        <div class="modal-actions">
+          <button class="btn ghost" id="perms-cancel">Отмена</button>
+          <button class="btn primary" id="perms-save">Сохранить</button>
+        </div>
+      </div>
     </div>
 
     <script type="module" src="./panel.js"></script>
